@@ -1,0 +1,10 @@
+services:
+  falkordb:
+    image: falkordb/falkordb:latest   # pin a specific tag once you have tested one
+    ports:
+      - "6379:6379"   # database
+      - "3000:3000"   # FalkorDB Browser (optional UI for exploring the graph)
+    volumes:
+      - falkordb_data:/var/lib/falkordb/data
+volumes:
+  falkordb_data:

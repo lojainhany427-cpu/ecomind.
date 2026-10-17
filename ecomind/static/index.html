@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EcoMind AI — explainable environmental intelligence</title>
+<style>
+:root{--bg:#f4f8f4;--card:#fff;--ink:#14301f;--muted:#4b6455;--line:#cfe0d3;--accent:#1f7a4d;--warn:#9a5b00;
+--prob:#b3402a;--cause:#c98a1b;--int:#1f7a4d;--ev:#4a6fa5}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1a14;--card:#16251c;--ink:#e6f2ea;--muted:#9bb5a4;--line:#2a4034;--accent:#5fd29a;--warn:#f0b35a;
+--prob:#ff8a73;--cause:#f0b35a;--int:#5fd29a;--ev:#8fb4ee}}
+*{box-sizing:border-box}body{margin:0;font:16px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+header{padding:1rem 1.25rem;border-bottom:1px solid var(--line)}h1{margin:0;font-size:1.3rem}
+.sub{color:var(--muted);font-size:.9rem}
+.banner{background:var(--card);border-left:4px solid var(--warn);padding:.5rem 1rem;margin:.75rem 1.25rem;font-size:.9rem}
+main{display:grid;gap:1rem;padding:0 1.25rem 2rem;grid-template-columns:1fr}
+@media(min-width:1000px){main{grid-template-columns:1.4fr 1fr}}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1rem;min-width:0}
+h2{margin:.1rem 0 .6rem;font-size:1.05rem}
+form{display:flex;gap:.5rem;flex-wrap:wrap}input[type=text]{flex:1;min-width:200px;padding:.6rem;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+button{padding:.6rem 1rem;border:0;border-radius:8px;background:var(--accent);color:#fff;font-weight:600;cursor:pointer}
+@media (prefers-color-scheme:dark){button{color:#08140d}}
+button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:3px solid var(--warn);outline-offset:2px}
+.weights{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.5rem;margin:.6rem 0;font-size:.85rem}
+svg{width:100%;height:auto;background:var(--bg);border-radius:8px}
+.node{cursor:pointer}.node text{font-size:11px;fill:var(--ink)}
+.edge{stroke:var(--muted);stroke-width:1.2;fill:none;opacity:.6}
+pre{white-space:pre-wrap;word-break:break-word;background:var(--bg);padding:.6rem;border-radius:8px;font-size:.8rem;overflow:auto}
+.rec{border:1px solid var(--line);border-radius:8px;padding:.6rem;margin:.5rem 0}
+.bar{height:6px;background:var(--line);border-radius:3px}.bar>i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.tag{font-size:.75rem;color:var(--warn)}.legend span{margin-right:.8rem;font-size:.8rem}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px}
+#err{color:var(--prob)}
+</style>
+</head>
+<body>
+<header><h1>EcoMind AI</h1><div class="sub">Every recommendation is traced to real graph queries and relationships.</div></header>
+<div class="banner" role="note"><strong>Synthetic demo data.</strong> The school-waste graph is an illustrative, fictional scenario — not real measurements.</div>
+<main>
+<section aria-labelledby="qh" style="grid-column:1/-1">
+<h2 id="qh">Ask a question</h2>
+<form id="f"><label for="q" class="sub" style="width:100%">Environmental question</label>
+<input id="q" type="text" maxlength="500" value="How can our school reduce waste most effectively?">
+<button type="submit">Investigate</button></form>
+<div class="weights" role="group" aria-label="Scoring criteria weights">
+<label>Impact <input type="range" id="w_impact" min="0" max="100" value="45"></label>
+<label>Low cost <input type="range" id="w_cost" min="0" max="100" value="20"></label>
+<label>Ease <input type="range" id="w_ease" min="0" max="100" value="15"></label>
+<label>Evidence confidence <input type="range" id="w_confidence" min="0" max="100" value="20"></label></div>
+<div id="err" role="alert"></div>
+</section>
+<section aria-labelledby="gh"><h2 id="gh">Graph traversal</h2>
+<div class="legend"><span><i class="dot" style="background:var(--int)"></i>Intervention</span><span><i class="dot" style="background:var(--cause)"></i>Cause</span><span><i class="dot" style="background:var(--prob)"></i>Problem</span><span><i class="dot" style="background:var(--ev)"></i>Evidence</span></div>
+<svg id="g" viewBox="0 0 760 460" role="img" aria-label="Graph of interventions, causes, problem and evidence"></svg>
+<p class="sub">Click or press Enter on a node to inspect it.</p></section>
+<section aria-labelledby="rh"><h2 id="rh">Recommendations</h2><div id="recs" aria-live="polite">Run an investigation.</div></section>
+<section aria-labelledby="eh"><h2 id="eh">Explanation <span id="mode" class="tag"></span></h2><pre id="expl"></pre><p class="sub" id="note"></p></section>
+<section aria-labelledby="ih"><h2 id="ih">Evidence inspector</h2><pre id="insp">Select a node.</pre>
+<h2>Queries executed on FalkorDB</h2><div id="trace"></div></section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const COL={Intervention:'--int',Cause:'--cause',Problem:'--prob',Evidence:'--ev'};
+const X={Evidence:60,Intervention:230,Cause:440,Problem:670};
+let DATA=null;
+function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML}
+$('f').addEventListener('submit',async e=>{
+  e.preventDefault();$('err').textContent='';
+  const weights={};for(const k of ['impact','cost','ease','confidence'])weights[k]=+$('w_'+k).value;
+  try{
+    const r=await fetch('/api/investigate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:$('q').value,weights})});
+    const j=await r.json();if(!r.ok)throw new Error(j.error||r.statusText);
+    DATA=j;render();
+  }catch(x){$('err').textContent=x.message}
+});
+function render(){
+  $('expl').textContent=DATA.explanation;$('mode').textContent='['+DATA.explanation_mode+']';$('note').textContent=DATA.explanation_note;
+  $('recs').innerHTML=DATA.ranked.map(d=>`<div class="rec"><strong>#${d.rank} ${esc(d.name)}</strong> — score ${d.score}
+   <div class="bar" aria-hidden="true"><i style="width:${Math.round(d.score*100)}%"></i></div>
+   <div class="sub">impact ${d.components.impact} · cost ${d.components.cost} · ease ${d.components.ease} · confidence ${d.components.confidence}</div>
+   ${d.missing_evidence?'<div class="tag">⚠ No linked evidence in graph</div>':''}</div>`).join('');
+  $('trace').innerHTML=DATA.query_trace.map(t=>`<details><summary>${esc(t.query)} — ${t.rows} rows</summary><pre>${esc(t.cypher)}\nparams: ${esc(JSON.stringify(t.params))}</pre></details>`).join('');
+  drawGraph();
+}
+function drawGraph(){
+  const nodes=DATA.graph.nodes,edges=DATA.graph.edges,svg=$('g'),pos={},cols={};
+  nodes.forEach(n=>(cols[n.label]=cols[n.label]||[]).push(n));
+  for(const [lab,arr] of Object.entries(cols))arr.forEach((n,i)=>pos[n.id]={x:X[lab],y:30+i*(400/Math.max(arr.length,1))+20});
+  let h='<defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0L8,4L0,8z" fill="currentColor"/></marker></defs>';
+  edges.forEach(e=>{const a=pos[e.src],b=pos[e.dst];if(!a||!b)return;
+    h+=`<path class="edge" d="M${a.x+40},${a.y} C${(a.x+b.x)/2},${a.y} ${(a.x+b.x)/2},${b.y} ${b.x-40},${b.y}"><title>${esc(e.src)} ${esc(e.rel)} ${esc(e.dst)}${e.w!=null?' ('+e.w+')':''}</title></path>`});
+  nodes.forEach(n=>{const p=pos[n.id],nm=(n.name||n.id);const short=nm.length>26?nm.slice(0,25)+'…':nm;
+    h+=`<g class="node" tabindex="0" role="button" aria-label="${esc(n.label)}: ${esc(nm)}" data-id="${esc(n.id)}"><circle cx="${p.x}" cy="${p.y}" r="9" style="fill:var(${COL[n.label]})"/><text x="${p.x}" y="${p.y+24}" text-anchor="middle">${esc(short)}</text></g>`});
+  svg.innerHTML=h;
+  svg.querySelectorAll('.node').forEach(g=>{const f=()=>inspect(g.dataset.id);g.addEventListener('click',f);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();f()}})});
+}
+function inspect(id){
+  const n=DATA.graph.nodes.find(x=>x.id===id);const rel=DATA.graph.edges.filter(e=>e.src===id||e.dst===id);
+  const iv=DATA.ranked.find(d=>d.id===id);
+  let t=`${n.label}: ${n.name||n.id}\nid: ${id}\n\nRelationships:\n`+rel.map(e=>`  ${e.src} -[${e.rel}${e.w!=null?' '+e.w:''}]-> ${e.dst}`).join('\n');
+  if(iv){t+=`\n\nTargets: `+iv.targets.map(x=>`${x.cause} (effect ${x.effect}, influence ${x.influence})`).join('; ');
+    t+=`\nEvidence: `+(iv.evidence.length?iv.evidence.map(e=>`${e.label} [confidence ${e.confidence}, synthetic=${e.synthetic}]`).join('; '):'NONE — missing evidence');}
+  if(n.label==='Evidence')t+='\n\nThis is a synthetic assumption, not a measurement.';
+  $('insp').textContent=t;
+}
+</script>
+</body></html>
