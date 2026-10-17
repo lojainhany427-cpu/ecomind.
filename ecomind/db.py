@@ -16,7 +16,8 @@ class GraphStore:
             raise DatabaseUnavailable("Python package 'falkordb' is not installed (pip install -r requirements.txt)") from e
         self._cfg = cfg
         try:
-            self._db = FalkorDB(host=cfg.host, port=cfg.port, password=cfg.password)
+            self._db = FalkorDB(host=cfg.host, port=cfg.port, username=cfg.username,
+                                password=cfg.password, ssl=cfg.ssl)
             self._db.connection.ping()
         except Exception as e:
             raise DatabaseUnavailable(f"Cannot reach FalkorDB at {cfg.host}:{cfg.port} ({type(e).__name__})") from e
@@ -37,6 +38,16 @@ class GraphStore:
         for cypher, params in stmts:
             self._graph.query(cypher, params)
         return len(stmts)
+
+    def ensure_seeded(self) -> bool:
+        """Seed the synthetic graph only if it is missing/empty. Returns True if it seeded."""
+        try:
+            if self.run("problems"):
+                return False
+        except DatabaseUnavailable:
+            pass  # graph does not exist yet
+        self.seed(reset=False)
+        return True
 
     def run(self, name: str, params: dict | None = None) -> list[dict]:
         params = validate(name, params)
