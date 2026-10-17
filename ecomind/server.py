@@ -19,6 +19,8 @@ def create_app(store=None, llm=None):
         if state["store"] is None:
             cfg = load_config()
             state["store"] = GraphStore(cfg)
+            if cfg.autoseed:
+                state["store"].ensure_seeded()
             if cfg.llm_key and state["llm"] is None:
                 state["llm"] = AnthropicNarrator(cfg.llm_key, cfg.llm_model)
         return Engine(state["store"], state["llm"])
@@ -50,5 +52,7 @@ def create_app(store=None, llm=None):
     return app
 
 
+app = create_app()  # used by gunicorn: gunicorn ecomind.server:app
+
 if __name__ == "__main__":
-    create_app().run(host="127.0.0.1", port=5000)
+    app.run(host="127.0.0.1", port=5000)
